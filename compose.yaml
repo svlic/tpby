@@ -1,0 +1,31 @@
+name: tpby
+
+services:
+  tpby:
+    build:
+      context: .
+    image: tpby:local
+    env_file:
+      - .env
+    environment:
+      TPBY_DATABASE_PATH: /app/data/tpby.sqlite3
+      TPBY_MEDIA_DIR: /app/data/media
+      TPBY_READER_SESSION: /app/sessions/reader
+      TPBY_WRITER_SESSION: /app/sessions/writer
+    volumes:
+      - tpby-data:/app/data
+      - tpby-sessions:/app/sessions
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    restart: unless-stopped
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  tpby-data:
+  tpby-sessions:
