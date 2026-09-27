@@ -9,6 +9,7 @@ description = "Telegram media routing, grouping, and blacklist service"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "telethon>=1.36,<2",
   "tzdata>=2024.1",
 ]
 
@@ -17,6 +18,9 @@ dev = [
   "pytest>=8,<9",
   "pytest-asyncio>=0.24,<1",
 ]
+
+[project.scripts]
+tpby = "tpby.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tpby"]
