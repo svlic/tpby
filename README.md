@@ -104,6 +104,19 @@ set +a
 
 处于 DEAL 的完整媒体应保留，以支持未来提升到 UP。进入 UP / BLACKLIST 后当前版本不会主动清理文件，优先保证可恢复性；可在确认备份后按数据库引用另行清理。
 
+## 并发与流控
+
+CODE 更新先写入 SQLite 持久化队列，再由准备 worker 并行搜索、下载和计算 hash；进程退出时尚未完成的 job 会在下次启动继续。可能修改 logical group 的路由决策、上传、激活和删除仍串行执行，避免两个 hash 连通任务基于同一旧状态同时发布。
+
+Reader 和 Writer 分别使用独立的自适应 I/O 门控：从并发 1 开始，连续成功后逐步增加，遇到 Telegram `FloodWait` 后立即降低并发，并按服务端要求的时间统一冷却。单个 CODE 内的媒体可以并行下载，但不会超过 Reader 上限；hash 计算由独立上限控制。默认上限可通过以下变量调整：
+
+- `TPBY_SOURCE_PREPARE_CONCURRENCY=4`
+- `TPBY_READER_IO_CONCURRENCY=4`
+- `TPBY_MEDIA_HASH_CONCURRENCY=2`
+- `TPBY_WRITER_IO_CONCURRENCY=2`
+
+这些值是安全上限而非启动并发，也不是 Telegram QPS；不建议仅为追求速度继续增大。Writer 的状态变更目前仍保持串行，即使其 I/O 上限更高。
+
 ## 灾难恢复
 
 `--rebuild` 会先完整扫描并下载 UP 与 BLACKLIST，再**替换本地数据库中的全部状态**：
@@ -130,4 +143,4 @@ UP 以 caption 中完整 code list 相同的 albums 归为一个 logical group�
 
 ## 当前一致性边界
 
-SQLite 变更和 Telegram RPC 无法组成原子事务。实现遵循“先创建完整的新 UP/DEAL2，再删除旧消息”，避免失败时丢失旧频道内容；极端 RPC 半完成的自动修复按需求暂缓。所有业务操作在进程内串行执行，避免监听事件与程序自身重建互相竞争。
+SQLite 变更和 Telegram RPC 无法组成原子事务。实现遵循“先创建完整的新 UP/DEAL2，再删除旧消息”，避免失败时丢失旧频道内容；已确认的分块上传若后续失败会尽力回收，但进程在 RPC 成功后、SQLite 提交前退出造成的极端半完成仍缺少自动 reconciliation。搜索、下载和 hash 可以受控并行，所有 logical group 状态变更仍在进程内串行执行。

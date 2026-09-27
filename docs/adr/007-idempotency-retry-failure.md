@@ -19,9 +19,11 @@ Telegram 事件可能重复送达，网络操作也可能暂时失败。业务�
 
 ## 实现
 
-Reader 和 Writer 都显式配置 Telethon 请求级重试：每个 request 最多重试 3 次，连接重试 3 次，连接重试间隔 2 秒，60 秒以内的 flood wait 由 Telethon 等待后重试。Telethon 对同一个 request 对象重试，避免业务层重新执行完整 task；发送请求的 random ID 因而保持不变。重试耗尽或超过 flood wait 阈值后，最终异常由业务入口写入 failure。
+Reader 和 Writer 都显式配置 Telethon 请求级重试：每个 request 最多重试 3 次，连接重试 5 次，连接重试间隔 2 秒，10 秒以内的 flood wait 由 Telethon 对同一个 request 等待后重试，发送请求的 random ID 因而保持不变。更长的 `FloodWait` 由 Reader/Writer 各自的应用层门控统一等待：门控将并发减半、阻止同账号新 I/O，并在等待结束后重试该高层操作。
 
-`AmbiguousSourceError` 作为确定性业务拒绝单独处理，不进入任何业务层重试循环。其他 Telegram I/O 的重试由客户端请求层承担；应用不会从 source 搜索开始盲目重放已经产生部分副作用的整个流程。
+CODE 输入在开始 Telegram I/O 前先写入 SQLite `code_jobs`。准备 worker 异常退出或进程重启时，`running` job 会恢复为 `pending`；成功 task、确定性 failure 或 bypass 持久化后才删除 job。启动时在事件 handler 注册后显式执行 catch-up，遗漏或重复更新仍由消息幂等键约束。
+
+`AmbiguousSourceError` 作为确定性业务拒绝单独处理，不进入任何重试循环。普通瞬时 Telegram I/O 错误由客户端请求层承担；超过 10 秒的 `FloodWait` 只重试门控中的单次搜索、下载、上传分块或删除操作，不会从 source 搜索开始盲目重放已经产生部分副作用的整个 task。
 
 ## 结果
 
@@ -35,5 +37,5 @@ Reader 和 Writer 都显式配置 Telethon 请求级重试：每个 request 最�
 - **事实：** task、failure、bypass 表和 processed 检查已经实现。
 - **事实：** README 规定 failure 阻止自动重复处理。
 - **事实：** 维护者确认需要对瞬时错误有限重试，耗尽后进入 failure。
-- **事实：** 当前实现显式设置有限请求/连接重试，并为配置添加测试。
+- **事实：** 当前实现显式设置有限请求/连接重试、持久化 CODE job 和自适应 FloodWait 门控，并有自动化测试覆盖。
 - **开放项：** 人工重放 failure 的正式入口尚未实现。
