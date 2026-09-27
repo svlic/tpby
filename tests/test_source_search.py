@@ -3,7 +3,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from tpby.telegram import AmbiguousSourceError, TelegramApplication
+from tpby.telegram import (
+    AdaptiveTelegramGate,
+    AmbiguousSourceError,
+    TelegramApplication,
+)
 
 
 class FakeReader:
@@ -30,6 +34,7 @@ def application(messages) -> TelegramApplication:
     app = object.__new__(TelegramApplication)
     app.reader = FakeReader(messages)
     app.settings = SimpleNamespace(source_channel=-1001, source_search_limit=100)
+    app._reader_gate = AdaptiveTelegramGate("reader", 1)
     return app
 
 

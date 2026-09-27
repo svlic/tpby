@@ -35,9 +35,9 @@ def test_application_configures_finite_telegram_retries(
     for _args, options in clients:
         assert options == {
             "request_retries": 3,
-            "connection_retries": 3,
+            "connection_retries": 5,
             "retry_delay": 2,
-            "flood_sleep_threshold": 60,
+            "flood_sleep_threshold": 10,
             "raise_last_call_error": True,
         }
     application.repository.close()

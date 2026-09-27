@@ -20,6 +20,13 @@ def _channel(name: str) -> int | str:
         return value
 
 
+def _positive_int(name: str, default: int) -> int:
+    value = int(os.getenv(name, str(default)))
+    if value < 1:
+        raise ValueError(f"{name} must be at least 1")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     api_id: int
@@ -35,6 +42,10 @@ class Settings:
     database_path: Path
     media_dir: Path
     source_search_limit: int = 100
+    source_prepare_concurrency: int = 4
+    reader_io_concurrency: int = 4
+    media_hash_concurrency: int = 2
+    writer_io_concurrency: int = 2
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -51,5 +62,15 @@ class Settings:
             deal2_channel=_channel("TPBY_DEAL2_CHANNEL"),
             database_path=Path(os.getenv("TPBY_DATABASE_PATH", "data/tpby.sqlite3")),
             media_dir=Path(os.getenv("TPBY_MEDIA_DIR", "data/media")),
-            source_search_limit=int(os.getenv("TPBY_SOURCE_SEARCH_LIMIT", "100")),
+            source_search_limit=_positive_int("TPBY_SOURCE_SEARCH_LIMIT", 100),
+            source_prepare_concurrency=_positive_int(
+                "TPBY_SOURCE_PREPARE_CONCURRENCY", 4
+            ),
+            reader_io_concurrency=_positive_int(
+                "TPBY_READER_IO_CONCURRENCY", 4
+            ),
+            media_hash_concurrency=_positive_int("TPBY_MEDIA_HASH_CONCURRENCY", 2),
+            writer_io_concurrency=_positive_int(
+                "TPBY_WRITER_IO_CONCURRENCY", 2
+            ),
         )
