@@ -41,14 +41,16 @@ class RoutingService:
                 self.repository.add_blacklist_hashes(hashes)
             return ProcessResult("BLACKLIST")
 
-        up_seeds = self.repository.active_groups_touching(hashes, ["UP"])
-        if up_seeds:
-            return await self._merge_into_group(task, "UP", ["UP", "DEAL1", "DEAL2"])
+        if self.repository.active_groups_touching(hashes, ["UP"]):
+            old_groups = self.repository.connected_groups(
+                hashes, ["UP", "DEAL1", "DEAL2"]
+            )
+            return await self._replace_groups("UP", old_groups, task)
 
-        old_hashes = self.repository.historical_hashes(hashes)
-        if not old_hashes:
-            return await self._create_standalone_deal1(task)
-        return await self._merge_into_group(task, "DEAL2", ["DEAL1", "DEAL2"])
+        if not self.repository.historical_hashes(hashes):
+            return await self._replace_groups("DEAL1", [], task)
+        old_groups = self.repository.connected_groups(hashes, ["DEAL1", "DEAL2"])
+        return await self._replace_groups("DEAL2", old_groups, task)
 
     async def promote_deal_to_up(self, deal_group_id: int) -> ProcessResult:
         if not self.repository.group_is_active(deal_group_id):
@@ -87,25 +89,6 @@ class RoutingService:
             for group_id, hashes in grouped.items():
                 self.repository.add_hidden_hashes(group_id, hashes)
 
-    async def _create_standalone_deal1(self, task: SourceTask) -> ProcessResult:
-        with self.repository.transaction():
-            task_id = self.repository.insert_task(task, "DEAL1")
-            group_id = self.repository.create_group("DEAL1", [task_id], active=False)
-        try:
-            await self._publish_new_group(group_id)
-        except BaseException:
-            self.repository.discard_staged_group(group_id, task_id)
-            raise
-        with self.repository.transaction():
-            self.repository.activate_group(group_id)
-        return ProcessResult("DEAL1", group_id)
-
-    async def _merge_into_group(
-        self, task: SourceTask, kind: GroupKind, connected_kinds: Sequence[GroupKind]
-    ) -> ProcessResult:
-        old_groups = self.repository.connected_groups(task.hashes, connected_kinds)
-        return await self._replace_groups(kind, old_groups, task)
-
     async def _replace_groups(
         self, kind: GroupKind, old_group_ids: Sequence[int], task: SourceTask | None
     ) -> ProcessResult:
@@ -121,7 +104,10 @@ class RoutingService:
             self.repository.add_hidden_hashes(group_id, hidden)
 
         try:
-            await self._publish_new_group(group_id)
+            group = self.repository.get_group(group_id)
+            messages = await self.publisher.publish_group(group)
+            with self.repository.transaction():
+                self.repository.replace_message_index(group.kind, group_id, messages)
         except BaseException:
             self.repository.discard_staged_group(group_id, new_task_id)
             raise
@@ -132,21 +118,16 @@ class RoutingService:
             # are not interpreted as user-hidden media. Retain DEAL indexes so the
             # remaining events from a manually forwarded album can be recognized.
             self.repository.remove_message_index_for_groups(old_group_ids, "UP")
-        await self.publisher.delete_messages(old_messages)
+        if old_group_ids:
+            await self.publisher.delete_messages(old_messages)
         return ProcessResult(kind, group_id)
-
-    async def _publish_new_group(self, group_id: int) -> None:
-        group = self.repository.get_group(group_id)
-        messages = await self.publisher.publish_group(group)
-        with self.repository.transaction():
-            self.repository.replace_message_index(group.kind, group_id, messages)
 
     @staticmethod
     def _blacklist_metadata(codes: Sequence[str], hashes: set[str]) -> str:
         return json.dumps(
             {
                 "version": 1,
-                "codes": list(dict.fromkeys(codes)),
+                "codes": list(codes),
                 "hashes": sorted(hashes),
             },
             ensure_ascii=False,
