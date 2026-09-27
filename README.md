@@ -114,6 +114,11 @@ set +a
 
 UP 以 caption 中完整 code list 相同的 albums 归为一个 logical group；BLACKLIST 合并实际媒体 SHA-256 和本程序生成的 metadata `.txt`。按需求，DEAL 历史和已删除媒体的 hidden 状态不恢复。执行前应备份数据库。
 
+## 架构文档
+
+- [Architecture Decision Records](docs/adr/README.md)
+- [待修改功能与风险清单](docs/architecture-follow-ups.md)
+
 ## 测试
 
 ```bash
