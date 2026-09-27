@@ -124,19 +124,14 @@ class Repository:
             yield
 
     def is_code_message_processed(self, chat_id: int, message_id: int) -> bool:
-        task = self.connection.execute(
-            "SELECT 1 FROM tasks WHERE code_chat_id=? AND code_message_id=?",
-            (chat_id, message_id),
+        row = self.connection.execute(
+            "SELECT 1 FROM tasks WHERE code_chat_id=? AND code_message_id=? "
+            "UNION ALL SELECT 1 FROM failures WHERE code_chat_id=? AND code_message_id=? "
+            "UNION ALL SELECT 1 FROM bypasses WHERE code_chat_id=? AND code_message_id=? "
+            "LIMIT 1",
+            (chat_id, message_id) * 3,
         ).fetchone()
-        failure = self.connection.execute(
-            "SELECT 1 FROM failures WHERE code_chat_id=? AND code_message_id=?",
-            (chat_id, message_id),
-        ).fetchone()
-        bypass = self.connection.execute(
-            "SELECT 1 FROM bypasses WHERE code_chat_id=? AND code_message_id=?",
-            (chat_id, message_id),
-        ).fetchone()
-        return task is not None or failure is not None or bypass is not None
+        return row is not None
 
     def enqueue_code_job(self, chat_id: int, message_id: int, code: str) -> bool:
         if self.is_code_message_processed(chat_id, message_id):
@@ -195,8 +190,6 @@ class Repository:
             )
 
     def historical_hashes(self, hashes: set[str]) -> set[str]:
-        if not hashes:
-            return set()
         placeholders = ",".join("?" for _ in hashes)
         rows = self.connection.execute(
             f"SELECT DISTINCT sha256 FROM task_media WHERE sha256 IN ({placeholders})",
@@ -205,8 +198,6 @@ class Repository:
         return {row[0] for row in rows}
 
     def blacklist_matches(self, hashes: set[str]) -> set[str]:
-        if not hashes:
-            return set()
         placeholders = ",".join("?" for _ in hashes)
         rows = self.connection.execute(
             f"SELECT sha256 FROM blacklist_hashes WHERE sha256 IN ({placeholders})",
@@ -282,8 +273,6 @@ class Repository:
                 self.connection.execute("DELETE FROM tasks WHERE id=?", (task_id,))
 
     def deactivate_groups(self, group_ids: Sequence[int]) -> None:
-        if not group_ids:
-            return
         placeholders = ",".join("?" for _ in group_ids)
         self.connection.execute(
             f"UPDATE groups_ SET active=0 WHERE id IN ({placeholders})",
@@ -293,8 +282,6 @@ class Repository:
     def active_groups_touching(
         self, hashes: set[str], kinds: Sequence[GroupKind] | None = None
     ) -> list[int]:
-        if not hashes:
-            return []
         hash_marks = ",".join("?" for _ in hashes)
         params: list[object] = list(hashes)
         kind_sql = ""
@@ -326,8 +313,6 @@ class Repository:
                 hashes.update(self.get_group(group_id).hashes)
 
     def task_ids_for_groups(self, group_ids: Sequence[int]) -> list[int]:
-        if not group_ids:
-            return []
         marks = ",".join("?" for _ in group_ids)
         rows = self.connection.execute(
             f"SELECT DISTINCT task_id FROM group_tasks WHERE group_id IN ({marks})",
@@ -336,8 +321,6 @@ class Repository:
         return [int(row[0]) for row in rows]
 
     def hidden_hashes_for_groups(self, group_ids: Sequence[int]) -> set[str]:
-        if not group_ids:
-            return set()
         marks = ",".join("?" for _ in group_ids)
         rows = self.connection.execute(
             f"SELECT DISTINCT sha256 FROM hidden_media WHERE group_id IN ({marks})",
@@ -414,8 +397,6 @@ class Repository:
         )
 
     def messages_for_groups(self, group_ids: Sequence[int]) -> list[tuple[str, int]]:
-        if not group_ids:
-            return []
         marks = ",".join("?" for _ in group_ids)
         rows = self.connection.execute(
             f"SELECT chat_kind, message_id FROM telegram_messages "
@@ -427,8 +408,6 @@ class Repository:
     def remove_message_index_for_groups(
         self, group_ids: Sequence[int], chat_kind: str | None = None
     ) -> None:
-        if not group_ids:
-            return
         marks = ",".join("?" for _ in group_ids)
         kind_clause = " AND chat_kind=?" if chat_kind is not None else ""
         params: tuple[object, ...] = tuple(group_ids)
