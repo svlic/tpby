@@ -67,7 +67,6 @@ class AdaptiveTelegramGate:
     @asynccontextmanager
     async def _slot(self):
         while True:
-            delay = 0.0
             async with self._condition:
                 delay = self._cooldown_until - asyncio.get_running_loop().time()
                 if delay <= 0 and self._active < self._limit:
@@ -520,15 +519,10 @@ class TelegramApplication:
             if isinstance(result, MediaInput)
         ]
         deal_hash = next(
-            (
-                media.sha256
-                for message, media in zip(candidates, downloaded, strict=True)
-                if message.id == deal_messages[0].id
-            ),
-            None,
+            media.sha256
+            for message, media in zip(candidates, downloaded, strict=True)
+            if message.id == deal_messages[0].id
         )
-        if deal_hash is None:
-            raise AmbiguousSourceError("deal_media could not be downloaded")
         return SourceTask(
             code,
             tuple(downloaded),
