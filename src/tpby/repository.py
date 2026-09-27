@@ -77,6 +77,16 @@ CREATE TABLE IF NOT EXISTS bypasses (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY(code_chat_id, code_message_id)
 );
+CREATE TABLE IF NOT EXISTS code_jobs (
+    code_chat_id INTEGER NOT NULL,
+    code_message_id INTEGER NOT NULL,
+    code TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'running')) DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(code_chat_id, code_message_id)
+);
+CREATE INDEX IF NOT EXISTS code_jobs_pending_idx
+ON code_jobs(status, created_at);
 """
 
 
@@ -104,6 +114,7 @@ class Repository:
                 "blacklist_hashes",
                 "failures",
                 "bypasses",
+                "code_jobs",
             ):
                 self.connection.execute(f"DELETE FROM {table}")
 
@@ -126,6 +137,46 @@ class Repository:
             (chat_id, message_id),
         ).fetchone()
         return task is not None or failure is not None or bypass is not None
+
+    def enqueue_code_job(self, chat_id: int, message_id: int, code: str) -> bool:
+        if self.is_code_message_processed(chat_id, message_id):
+            return False
+        with self.connection:
+            cursor = self.connection.execute(
+                "INSERT OR IGNORE INTO code_jobs(code_chat_id, code_message_id, code) "
+                "VALUES (?, ?, ?)",
+                (chat_id, message_id, code),
+            )
+        return cursor.rowcount == 1
+
+    def reset_running_code_jobs(self) -> None:
+        with self.connection:
+            self.connection.execute(
+                "UPDATE code_jobs SET status='pending' WHERE status='running'"
+            )
+
+    def claim_code_job(self) -> sqlite3.Row | None:
+        with self.connection:
+            row = self.connection.execute(
+                "SELECT code_chat_id, code_message_id, code FROM code_jobs "
+                "WHERE status='pending' ORDER BY created_at, code_chat_id, code_message_id "
+                "LIMIT 1"
+            ).fetchone()
+            if row is None:
+                return None
+            cursor = self.connection.execute(
+                "UPDATE code_jobs SET status='running' "
+                "WHERE code_chat_id=? AND code_message_id=? AND status='pending'",
+                (row["code_chat_id"], row["code_message_id"]),
+            )
+            return row if cursor.rowcount == 1 else None
+
+    def complete_code_job(self, chat_id: int, message_id: int) -> None:
+        with self.connection:
+            self.connection.execute(
+                "DELETE FROM code_jobs WHERE code_chat_id=? AND code_message_id=?",
+                (chat_id, message_id),
+            )
 
     def record_bypass(self, chat_id: int, message_id: int, code: str) -> None:
         with self.connection:
