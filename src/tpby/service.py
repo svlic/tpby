@@ -93,7 +93,7 @@ class RoutingService:
             group_id = self.repository.create_group("DEAL1", [task_id], active=False)
         try:
             await self._publish_new_group(group_id)
-        except Exception:
+        except BaseException:
             self.repository.discard_staged_group(group_id, task_id)
             raise
         with self.repository.transaction():
@@ -122,7 +122,7 @@ class RoutingService:
 
         try:
             await self._publish_new_group(group_id)
-        except Exception:
+        except BaseException:
             self.repository.discard_staged_group(group_id, new_task_id)
             raise
         with self.repository.transaction():

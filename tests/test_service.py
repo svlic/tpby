@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -35,6 +36,11 @@ class FakePublisher:
 class FailingPublisher(FakePublisher):
     async def publish_group(self, group: GroupSnapshot) -> list[tuple[int, str]]:
         raise RuntimeError("upload failed")
+
+
+class CancellingPublisher(FakePublisher):
+    async def publish_group(self, group: GroupSnapshot) -> list[tuple[int, str]]:
+        raise asyncio.CancelledError
 
 
 def task(code: str, hashes: list[str], deal: str, message_id: int) -> SourceTask:
@@ -148,3 +154,15 @@ async def test_failed_replacement_keeps_old_group_active(tmp_path: Path) -> None
 
     assert repository.group_is_active(up.group_id)
     assert repository.historical_hashes({"C"}) == set()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_publish_discards_staged_task(tmp_path: Path) -> None:
+    repository = Repository(tmp_path / "test.sqlite3")
+    service = RoutingService(repository, CancellingPublisher())
+
+    with pytest.raises(asyncio.CancelledError):
+        await service.process(task("111111", ["A", "B"], "B", 1))
+
+    assert repository.historical_hashes({"A", "B"}) == set()
+    assert not repository.is_code_message_processed(-1001, 1)
