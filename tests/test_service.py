@@ -16,6 +16,7 @@ class FakePublisher:
         self.next_message_id = 100
         self.groups: list[GroupSnapshot] = []
         self.deleted: list[tuple[str, int]] = []
+        self.delete_calls = 0
         self.metadata: list[dict[str, object]] = []
 
     async def publish_group(self, group: GroupSnapshot) -> list[tuple[int, str]]:
@@ -27,6 +28,7 @@ class FakePublisher:
         return result
 
     async def delete_messages(self, messages: list[tuple[str, int]]) -> None:
+        self.delete_calls += 1
         self.deleted.extend(messages)
 
     async def publish_blacklist_metadata(self, content: str) -> None:
@@ -60,6 +62,56 @@ def system(tmp_path: Path) -> tuple[Repository, FakePublisher, RoutingService]:
     return repository, publisher, RoutingService(repository, publisher)
 
 
+def test_repository_preserves_media_mime_type(tmp_path: Path) -> None:
+    repository = Repository(tmp_path / "test.sqlite3")
+    source = SourceTask(
+        "111111",
+        (MediaInput("A", Path("/A.mp4"), "video/mp4"),),
+        "A",
+    )
+    with repository.transaction():
+        task_id = repository.insert_task(source, "UP")
+        group_id = repository.create_group("UP", [task_id])
+
+    assert repository.get_group(group_id).tasks[0].media[0].mime_type == "video/mp4"
+
+
+def test_repository_get_group_preserves_task_and_media_order(tmp_path: Path) -> None:
+    repository = Repository(tmp_path / "test.sqlite3")
+    first = SourceTask(
+        "111111",
+        (
+            MediaInput("A", Path("/A.mp4"), telegram_message_id=12),
+            MediaInput("B", Path("/B.mp4"), telegram_message_id=11),
+        ),
+        "B",
+    )
+    second = SourceTask("222222", (MediaInput("C", Path("/C.mp4")),), "C")
+    with repository.transaction():
+        first_id = repository.insert_task(first, "UP")
+        second_id = repository.insert_task(second, "UP")
+        group_id = repository.create_group("UP", [second_id, first_id])
+
+    group = repository.get_group(group_id)
+
+    assert group.codes == ["111111", "222222"]
+    assert [item.sha256 for item in group.tasks[0].media] == ["A", "B"]
+    assert [item.telegram_message_id for item in group.tasks[0].media] == [12, 11]
+
+
+def test_repository_empty_queries_are_noops(tmp_path: Path) -> None:
+    repository = Repository(tmp_path / "test.sqlite3")
+
+    assert repository.historical_hashes(set()) == set()
+    assert repository.blacklist_matches(set()) == set()
+    assert repository.active_groups_touching(set()) == []
+    assert repository.task_ids_for_groups([]) == []
+    assert repository.hidden_hashes_for_groups([]) == set()
+    assert repository.messages_for_groups([]) == []
+    repository.deactivate_groups([])
+    repository.remove_message_index_for_groups([])
+
+
 @pytest.mark.asyncio
 async def test_new_task_goes_to_deal1_with_only_deal_media(system) -> None:
     repository, publisher, service = system
@@ -69,6 +121,20 @@ async def test_new_task_goes_to_deal1_with_only_deal_media(system) -> None:
     group = repository.get_group(result.group_id)
     assert group.hashes == {"A", "B"}
     assert [item.sha256 for item in publisher.groups[-1].display_media()] == ["B"]
+    assert publisher.delete_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_replacement_calls_delete_even_when_old_index_is_empty(system) -> None:
+    repository, publisher, service = system
+    first = await service.process(task("111111", ["A"], "A", 1))
+    with repository.transaction():
+        repository.remove_message_index_for_groups([first.group_id])
+
+    await service.process(task("222222", ["A"], "A", 2))
+
+    assert publisher.delete_calls == 1
+    assert publisher.deleted == []
 
 
 @pytest.mark.asyncio

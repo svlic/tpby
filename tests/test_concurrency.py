@@ -34,6 +34,14 @@ def test_code_jobs_survive_restart_and_remain_idempotent(tmp_path: Path) -> None
     repository.close()
 
 
+def test_bypassed_code_message_cannot_be_requeued(tmp_path: Path) -> None:
+    repository = Repository(tmp_path / "jobs.sqlite3")
+    repository.record_bypass(-1001, 11, "260927")
+
+    assert repository.is_code_message_processed(-1001, 11)
+    assert not repository.enqueue_code_job(-1001, 11, "260927")
+
+
 @pytest.mark.asyncio
 async def test_adaptive_gate_retries_flood_wait_and_reduces_concurrency(
     monkeypatch,
@@ -101,6 +109,37 @@ async def test_partial_group_upload_removes_confirmed_messages() -> None:
         await publisher.publish_group(group)
 
     assert writer.deleted == list(range(1, 11))
+
+
+@pytest.mark.asyncio
+async def test_blacklist_metadata_recreates_document_for_retry() -> None:
+    class RetryGate:
+        async def run(self, operation):
+            with pytest.raises(RuntimeError, match="retry"):
+                await operation()
+            return await operation()
+
+    class FakeWriter:
+        def __init__(self) -> None:
+            self.payloads: list[bytes] = []
+
+        async def send_file(self, channel, document):
+            self.payloads.append(document.read())
+            if len(self.payloads) == 1:
+                raise RuntimeError("retry")
+
+    writer = FakeWriter()
+    settings = SimpleNamespace(
+        deal1_channel=-1001,
+        deal2_channel=-1002,
+        up_channel=-1003,
+        blacklist_channel=-1004,
+    )
+    publisher = TelegramPublisher(writer, settings, RetryGate())
+
+    await publisher.publish_blacklist_metadata('{"hashes": ["A"]}')
+
+    assert writer.payloads == [b'{"hashes": ["A"]}'] * 2
 
 
 @pytest.mark.asyncio

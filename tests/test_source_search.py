@@ -1,11 +1,14 @@
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from tpby.domain import MediaInput
 from tpby.telegram import (
     AdaptiveTelegramGate,
     AmbiguousSourceError,
+    SourceObject,
     TelegramApplication,
 )
 
@@ -68,3 +71,36 @@ async def test_more_than_two_locally_verified_objects_is_rejected() -> None:
 
     with pytest.raises(AmbiguousSourceError, match="3 locally verified objects"):
         await app._find_source_objects("123456")
+
+
+@pytest.mark.asyncio
+async def test_build_source_task_tracks_deal_media_by_message_id() -> None:
+    messages = tuple(
+        SimpleNamespace(
+            id=message_id,
+            message=caption,
+            photo=True,
+            video=False,
+            file=SimpleNamespace(mime_type="video/mp4"),
+        )
+        for message_id, caption in (
+            (1, "编号：123456"),
+            (2, "编号：123456（验证视频）"),
+            (3, "编号：123456"),
+        )
+    )
+    app = object.__new__(TelegramApplication)
+
+    async def find_source_objects(code: str) -> list[SourceObject]:
+        return [SourceObject(messages)]
+
+    async def download_media(source_message) -> MediaInput:
+        return MediaInput(str(source_message.id), Path(f"/{source_message.id}.mp4"))
+
+    app._find_source_objects = find_source_objects
+    app._download_media = download_media
+
+    task = await app._build_source_task("123456", -1001, 10)
+
+    assert [media.sha256 for media in task.media] == ["1", "2", "3"]
+    assert task.deal_media_hash == "2"
