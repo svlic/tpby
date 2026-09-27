@@ -19,7 +19,7 @@ from .domain import (
     GroupSnapshot,
     MediaInput,
     SourceTask,
-    contains_code,
+    contains_numbered_code,
     extract_code,
     is_deal_media_caption,
     is_recent_date_code,
@@ -28,6 +28,11 @@ from .repository import Repository
 from .service import RoutingService
 
 LOG = logging.getLogger(__name__)
+
+TELEGRAM_REQUEST_RETRIES = 3
+TELEGRAM_CONNECTION_RETRIES = 3
+TELEGRAM_RETRY_DELAY_SECONDS = 2
+TELEGRAM_FLOOD_SLEEP_THRESHOLD_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -108,11 +113,24 @@ class TelegramPublisher:
 class TelegramApplication:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        client_options = {
+            "request_retries": TELEGRAM_REQUEST_RETRIES,
+            "connection_retries": TELEGRAM_CONNECTION_RETRIES,
+            "retry_delay": TELEGRAM_RETRY_DELAY_SECONDS,
+            "flood_sleep_threshold": TELEGRAM_FLOOD_SLEEP_THRESHOLD_SECONDS,
+            "raise_last_call_error": True,
+        }
         self.reader = TelegramClient(
-            settings.reader_session, settings.api_id, settings.api_hash
+            settings.reader_session,
+            settings.api_id,
+            settings.api_hash,
+            **client_options,
         )
         self.writer = TelegramClient(
-            settings.writer_session, settings.api_id, settings.api_hash
+            settings.writer_session,
+            settings.api_id,
+            settings.api_hash,
+            **client_options,
         )
         self.repository = Repository(settings.database_path)
         self.publisher = TelegramPublisher(self.writer, settings)
@@ -266,6 +284,9 @@ class TelegramApplication:
                 task = await self._build_source_task(code, chat_id, message_id)
                 result = await self.service.process(task)
                 LOG.info("processed code=%s disposition=%s", code, result.disposition)
+            except AmbiguousSourceError as error:
+                LOG.warning("rejected code=%s: %s", code, error)
+                self.repository.record_failure(chat_id, message_id, str(error))
             except Exception as error:
                 LOG.exception("failed to process code=%s", code)
                 self.repository.record_failure(chat_id, message_id, str(error))
@@ -309,16 +330,13 @@ class TelegramApplication:
 
     async def _find_source_objects(self, code: str) -> list[SourceObject]:
         matched: list[Any] = []
-        for query in (f'"编号：{code}"', f'"编号： {code}"', f'"{code}"'):
-            async for message in self.reader.iter_messages(
-                self.settings.source_channel,
-                search=query,
-                limit=self.settings.source_search_limit,
-            ):
-                if contains_code(message.message or "", code):
-                    matched.append(message)
-            if matched:
-                break
+        async for message in self.reader.iter_messages(
+            self.settings.source_channel,
+            search=f'"{code}"',
+            limit=self.settings.source_search_limit,
+        ):
+            if contains_numbered_code(message.message or "", code):
+                matched.append(message)
         if not matched:
             raise AmbiguousSourceError("no locally verified source result")
 

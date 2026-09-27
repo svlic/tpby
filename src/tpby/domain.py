@@ -8,6 +8,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 CODE_PATTERN = re.compile(r"(?<![\d(（])\d{6}(?![\d)）])")
+NUMBERED_CODE_PATTERN = re.compile(r"编号\s*[:：]\s*(?P<code>\d{6})(?![\d)）])")
 DEAL_MEDIA_PATTERN = re.compile(r"[（(]\s*验证视频\s*[）)]")
 
 GroupKind = Literal["DEAL1", "DEAL2", "UP"]
@@ -22,6 +23,13 @@ def contains_code(text: str, code: str) -> bool:
     return any(match.group(0) == code for match in CODE_PATTERN.finditer(text or ""))
 
 
+def contains_numbered_code(text: str, code: str) -> bool:
+    return any(
+        match.group("code") == code
+        for match in NUMBERED_CODE_PATTERN.finditer(text or "")
+    )
+
+
 def is_recent_date_code(code: str, today: date | None = None) -> bool:
     today = today or datetime.now(ZoneInfo("Asia/Shanghai")).date()
     try:
@@ -29,16 +37,7 @@ def is_recent_date_code(code: str, today: date | None = None) -> bool:
     except ValueError:
         return False
 
-    # Calendar-month subtraction, clamping the day to the destination month.
-    month_index = today.year * 12 + today.month - 1 - 6
-    year, month_zero = divmod(month_index, 12)
-    month = month_zero + 1
-    if month == 12:
-        next_month = date(year + 1, 1, 1)
-    else:
-        next_month = date(year, month + 1, 1)
-    last_day = (next_month - timedelta(days=1)).day
-    lower_bound = date(year, month, min(today.day, last_day))
+    lower_bound = today - timedelta(days=180)
     return lower_bound <= parsed <= today
 
 

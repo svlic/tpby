@@ -37,20 +37,18 @@ def application(messages) -> TelegramApplication:
 async def test_source_search_is_quoted_and_locally_filters_fuzzy_results() -> None:
     app = application(
         [
-            message(1, "编号：1234567"),
-            message(2, "编号：(123456)"),
-            message(3, "编号：123456"),
-            message(4, "补充 编号：123456"),
+            message(1, "正文出现 123456"),
+            message(2, "编号：1234567"),
+            message(3, "编号：(123456)"),
+            message(4, "编号 : 123456"),
+            message(5, "补充 编号： 123456"),
         ]
     )
 
     objects = await app._find_source_objects("123456")
 
-    assert app.reader.queries == ['"编号：123456"']
-    assert all(
-        query.startswith('"') and query.endswith('"') for query in app.reader.queries
-    )
-    assert [item.messages[0].id for item in objects] == [3, 4]
+    assert app.reader.queries == ['"123456"']
+    assert [item.messages[0].id for item in objects] == [4, 5]
 
 
 @pytest.mark.asyncio

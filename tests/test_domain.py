@@ -2,6 +2,7 @@ from datetime import date
 
 from tpby.domain import (
     contains_code,
+    contains_numbered_code,
     extract_code,
     is_deal_media_caption,
     is_recent_date_code,
@@ -20,11 +21,19 @@ def test_code_boundaries_reject_digits_and_parentheses() -> None:
     assert not contains_code("编号：(123456)", "123456")
 
 
-def test_recent_date_uses_six_calendar_month_window() -> None:
+def test_numbered_code_requires_label_separator_and_exact_six_digits() -> None:
+    assert contains_numbered_code("补充 编号： 123456", "123456")
+    assert contains_numbered_code("编号 :123456（验证视频）", "123456")
+    assert not contains_numbered_code("正文出现 123456", "123456")
+    assert not contains_numbered_code("编号：(123456)", "123456")
+    assert not contains_numbered_code("编号：1234567", "123456")
+
+
+def test_recent_date_uses_fixed_180_day_window() -> None:
     today = date(2026, 9, 27)
-    assert is_recent_date_code("260327", today)
+    assert is_recent_date_code("260331", today)
     assert is_recent_date_code("260927", today)
-    assert not is_recent_date_code("260326", today)
+    assert not is_recent_date_code("260330", today)
     assert not is_recent_date_code("260928", today)
     assert not is_recent_date_code("260231", today)
 
