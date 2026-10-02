@@ -31,7 +31,7 @@
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填写 API 凭据和六个频道 ID
+# 编辑 .env，分别填写 Reader、Writer 的 API 凭据和六个频道 ID
 docker compose build
 ```
 
@@ -76,7 +76,7 @@ python3 -m venv .venv
 cp .env.example .env
 ```
 
-在 <https://my.telegram.org> 创建应用并填写 `TPBY_API_ID` / `TPBY_API_HASH`，再填写六个频道 ID。频道 ID 推荐使用 `-100...` 格式。
+分别为两个账号在 <https://my.telegram.org> 创建应用并填写 `TPBY_READER_API_ID` / `TPBY_READER_API_HASH` 和 `TPBY_WRITER_API_ID` / `TPBY_WRITER_API_HASH`，再填写六个频道 ID。频道 ID 推荐使用 `-100...` 格式。
 
 账号权限：
 

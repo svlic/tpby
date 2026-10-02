@@ -29,8 +29,10 @@ def _positive_int(name: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class Settings:
-    api_id: int
-    api_hash: str
+    reader_api_id: int
+    reader_api_hash: str
+    writer_api_id: int
+    writer_api_hash: str
     reader_session: str
     writer_session: str
     code_channel: int | str
@@ -50,8 +52,10 @@ class Settings:
     @classmethod
     def from_env(cls) -> Settings:
         return cls(
-            api_id=int(_required("TPBY_API_ID")),
-            api_hash=_required("TPBY_API_HASH"),
+            reader_api_id=int(_required("TPBY_READER_API_ID")),
+            reader_api_hash=_required("TPBY_READER_API_HASH"),
+            writer_api_id=int(_required("TPBY_WRITER_API_ID")),
+            writer_api_hash=_required("TPBY_WRITER_API_HASH"),
             reader_session=os.getenv("TPBY_READER_SESSION", "sessions/reader"),
             writer_session=os.getenv("TPBY_WRITER_SESSION", "sessions/writer"),
             code_channel=_channel("TPBY_CODE_CHANNEL"),

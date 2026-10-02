@@ -230,14 +230,14 @@ class TelegramApplication:
         }
         self.reader = TelegramClient(
             settings.reader_session,
-            settings.api_id,
-            settings.api_hash,
+            settings.reader_api_id,
+            settings.reader_api_hash,
             **client_options,
         )
         self.writer = TelegramClient(
             settings.writer_session,
-            settings.api_id,
-            settings.api_hash,
+            settings.writer_api_id,
+            settings.writer_api_hash,
             **client_options,
         )
         self.repository = Repository(settings.database_path)
