@@ -229,12 +229,12 @@ class Repository:
                 "INSERT INTO media(sha256, path, mime_type) VALUES (?, ?, ?) "
                 "ON CONFLICT(sha256) DO UPDATE SET path=excluded.path, "
                 "mime_type=COALESCE(excluded.mime_type, media.mime_type)",
-                (media.sha256, str(media.path), media.mime_type),
+                (media.media_hash, str(media.path), media.mime_type),
             )
             self.connection.execute(
                 "INSERT OR IGNORE INTO task_media(task_id, sha256, source_message_id, position) "
                 "VALUES (?, ?, ?, ?)",
-                (task_id, media.sha256, media.telegram_message_id, position),
+                (task_id, media.media_hash, media.telegram_message_id, position),
             )
         return task_id
 
@@ -355,7 +355,7 @@ class Repository:
             ).fetchall()
             media = tuple(
                 MediaInput(
-                    sha256=row["sha256"],
+                    media_hash=row["sha256"],
                     path=Path(row["path"]),
                     mime_type=row["mime_type"],
                     telegram_message_id=row["source_message_id"],

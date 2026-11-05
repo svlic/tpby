@@ -102,5 +102,5 @@ async def test_build_source_task_tracks_deal_media_by_message_id() -> None:
 
     task = await app._build_source_task("123456", -1001, 10)
 
-    assert [media.sha256 for media in task.media] == ["1", "2", "3"]
+    assert [media.media_hash for media in task.media] == ["1", "2", "3"]
     assert task.deal_media_hash == "2"

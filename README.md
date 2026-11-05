@@ -1,6 +1,6 @@
 # TPBY
 
-基于两个 Telegram 用户账号的媒体分流服务。Reader 负责监听、搜索和下载，Writer 负责发送、重建和删除。业务状态保存在 SQLite，媒体以文件内容 SHA-256 为名称去重保存。
+基于两个 Telegram 用户账号的媒体分流服务。Reader 负责监听、搜索和下载，Writer 负责发送、重建和删除。业务状态保存在 SQLite，图片按感知哈希 pHash 去重，视频继续按文件内容 SHA-256 去重保存。
 
 ## 已实现业务
 
@@ -9,7 +9,7 @@
 - 识别 Telegram album，下载全部 source media，仅将真正带有 `(验证视频)` caption 的媒体作为 `deal_media`。
 - 严格执行 `BLACKLIST > UP > 历史重复 > DEAL1/DEAL2`。
 - Blacklist 整组扩散、metadata 文本（JSON 内容）、UP 传递归并、DEAL1 升级和 DEAL2 归并。
-- DEAL Telegram 只展示每个 task 的 `deal_media`；UP 展示完整 source media，按 SHA-256 去重。
+- DEAL Telegram 只展示每个 task 的 `deal_media`；UP 展示完整 source media，图片按 pHash、视频按 SHA-256 去重。
 - 人工原生 Forward DEAL → UP / BLACKLIST。
 - 识别人工删除的 UP 媒体并保留 hidden hash；程序重建产生的删除不会被误判。
 - `--rebuild` 从 UP 实际媒体和 BLACKLIST 媒体/metadata 重建长期核心状态。
@@ -99,10 +99,20 @@ set +a
 ## 数据目录
 
 - `data/tpby.sqlite3`：任务、hash、logical group、Telegram 消息索引和 hidden 状态。
-- `data/media/`：按 SHA-256 去重后的 source 媒体。
+- `data/media/`：图片按 pHash、视频按 SHA-256 去重后的 source 媒体。
 - `sessions/`：两个 Telegram 用户会话，必须作为敏感文件保护和备份。
 
 处于 DEAL 的完整媒体应保留，以支持未来提升到 UP。进入 UP / BLACKLIST 后当前版本不会主动清理文件，优先保证可恢复性；可在确认备份后按数据库引用另行清理。
+
+## pHash 规则与旧版升级
+
+图片先应用 EXIF 方向，再计算 64 位 pHash，标识为 `image-` 加 16 位十六进制值。视频保持原有的逐字节 SHA-256（64 位十六进制字符串），不抽帧、不解码，也不需要 FFmpeg。非图片文件仍使用 SHA-256。
+
+分组、黑名单、hidden 和文件复用按 **对应哈希完全相等** 判重，图片未引入汉明距离阈值。pHash 不是密码学哈希，可能将不同图片识别成同一媒体，复用首次保存的文件；压缩或裁剪也不保证一定命中。视频只有文件内容相同才命中。
+
+旧数据库可以继续打开，视频的历史、黑名单和文件缓存保持兼容。旧图片的 SHA-256 记录不会自动转换，也不会与新图片 pHash 匹配；仅凭摘要无法转换，必须有原图片才能重新计算。
+
+新 BLACKLIST metadata 带有 `hash_algorithm: "image-phash-video-sha256-v1"`，同时保存图片 pHash 和视频 SHA-256；旧版 metadata 的 SHA-256 仍会读取，以保留视频黑名单。旧图片黑名单必须从原图片重新计算，不能只改算法标签。`--rebuild` 会从 UP / BLACKLIST 实际图片计算 pHash，但仅存在于旧 metadata 中的图片摘要不能恢复为 pHash。重建前应备份数据库；该流程不恢复 DEAL 历史、hidden 或队列，不能作为无损迁移。SQLite 内部保留 `sha256` 列名，但它现在也存放带 `image-` 前缀的图片 pHash。
 
 ## 并发与流控
 
@@ -125,7 +135,7 @@ Reader 和 Writer 分别使用独立的自适应 I/O 门控：从并发 1 开始
 .venv/bin/tpby --rebuild
 ```
 
-UP 以 caption 中完整 code list 相同的 albums 归为一个 logical group；BLACKLIST 合并实际媒体 SHA-256 和本程序生成的 metadata `.txt`。按需求，DEAL 历史和已删除媒体的 hidden 状态不恢复。执行前应备份数据库。
+UP 以 caption 中完整 code list 相同的 albums 归为一个 logical group；BLACKLIST 合并实际媒体的对应哈希和本程序生成的 metadata `.txt`。按需求，DEAL 历史和已删除媒体的 hidden 状态不恢复。执行前应备份数据库。
 
 ## 架构文档
 

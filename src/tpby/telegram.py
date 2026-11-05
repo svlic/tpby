@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, TypeVar
 from uuid import uuid4
 
+import imagehash
+from PIL import Image, ImageOps, UnidentifiedImageError
 from telethon import TelegramClient, errors, events, utils
 
 from .config import Settings
@@ -125,7 +127,13 @@ class AdaptiveTelegramGate:
             LOG.info("%s Telegram I/O concurrency increased to %d", self.name, self._limit)
 
 
-def _sha256_file(path: Path) -> str:
+def _media_hash_file(path: Path) -> str:
+    try:
+        with Image.open(path) as image:
+            return "image-" + str(imagehash.phash(ImageOps.exif_transpose(image)))
+    except UnidentifiedImageError:
+        pass
+
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -178,7 +186,7 @@ class TelegramPublisher:
                 if len(messages) != len(chunk):
                     raise RuntimeError("Telegram returned an unexpected album size")
                 published.extend(
-                    (message.id, item.sha256)
+                    (message.id, item.media_hash)
                     for message, item in zip(messages, chunk, strict=True)
                 )
         except BaseException:
@@ -316,14 +324,14 @@ class TelegramApplication:
                         continue
                     task_ids = []
                     for code in codes:
-                        recovered = SourceTask(code, media, media[0].sha256)
+                        recovered = SourceTask(code, media, media[0].media_hash)
                         task_ids.append(self.repository.insert_task(recovered, "UP"))
                     group_id = self.repository.create_group("UP", task_ids)
                     self.repository.replace_message_index(
                         "UP",
                         group_id,
                         [
-                            (message_id, item.sha256)
+                            (message_id, item.media_hash)
                             for message_id, item in message_media
                         ],
                     )
@@ -382,13 +390,13 @@ class TelegramApplication:
         messages = await self._reader_gate.run(collect_messages)
         for message in messages:
             if message.photo or message.video:
-                hashes.add((await self._download_media(message)).sha256)
+                hashes.add((await self._download_media(message)).media_hash)
                 continue
             if message.document is None:
                 continue
             name = getattr(getattr(message, "file", None), "name", "") or ""
             if not name.endswith((".json", ".txt")):
-                hashes.add((await self._download_media(message)).sha256)
+                hashes.add((await self._download_media(message)).media_hash)
                 continue
             payload = await self._reader_gate.run(
                 lambda message=message: self.reader.download_media(message, file=bytes)
@@ -397,6 +405,12 @@ class TelegramApplication:
                 continue
             try:
                 metadata = json.loads(payload.decode("utf-8"))
+                if metadata.get("hash_algorithm") not in (
+                    None, "image-phash-video-sha256-v1"
+                ):
+                    raise ValueError(
+                        f"unsupported blacklist hash algorithm in message {message.id}"
+                    )
                 hashes.update(str(value) for value in metadata.get("hashes", []))
             except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
                 LOG.warning(
@@ -519,7 +533,7 @@ class TelegramApplication:
             if isinstance(result, MediaInput)
         ]
         deal_hash = next(
-            media.sha256
+            media.media_hash
             for message, media in zip(candidates, downloaded, strict=True)
             if message.id == deal_messages[0].id
         )
@@ -592,10 +606,10 @@ class TelegramApplication:
                 raise RuntimeError(f"failed to download source message {message.id}")
             downloaded_path = Path(downloaded)
             async with self._hash_semaphore:
-                sha256 = await asyncio.to_thread(_sha256_file, downloaded_path)
-            existing = next(self.settings.media_dir.glob(f"{sha256}.*"), None)
+                media_hash = await asyncio.to_thread(_media_hash_file, downloaded_path)
+            existing = next(self.settings.media_dir.glob(f"{media_hash}.*"), None)
             destination = (
-                existing or self.settings.media_dir / f"{sha256}{downloaded_path.suffix}"
+                existing or self.settings.media_dir / f"{media_hash}{downloaded_path.suffix}"
             )
             if existing is not None:
                 downloaded_path.unlink()
@@ -603,7 +617,7 @@ class TelegramApplication:
                 downloaded_path.replace(destination)
             finalized = True
             mime_type = getattr(getattr(message, "file", None), "mime_type", None)
-            return MediaInput(sha256, destination, mime_type, message.id)
+            return MediaInput(media_hash, destination, mime_type, message.id)
         finally:
             if not finalized:
                 temporary.unlink(missing_ok=True)

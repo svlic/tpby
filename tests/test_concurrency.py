@@ -92,7 +92,7 @@ async def test_partial_group_upload_removes_confirmed_messages() -> None:
     group = GroupSnapshot(
         7,
         "UP",
-        (StoredTask(1, "111111", media, media[0].sha256),),
+        (StoredTask(1, "111111", media, media[0].media_hash),),
     )
     writer = FakeWriter()
     settings = SimpleNamespace(

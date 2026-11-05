@@ -11,6 +11,8 @@ requires-python = ">=3.11"
 dependencies = [
   "telethon>=1.36,<2",
   "tzdata>=2024.1",
+  "ImageHash>=4.3,<5",
+  "Pillow>=10,<13",
 ]
 
 [project.optional-dependencies]

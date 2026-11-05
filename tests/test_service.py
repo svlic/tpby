@@ -24,7 +24,7 @@ class FakePublisher:
         result = []
         for media in group.display_media():
             self.next_message_id += 1
-            result.append((self.next_message_id, media.sha256))
+            result.append((self.next_message_id, media.media_hash))
         return result
 
     async def delete_messages(self, messages: list[tuple[str, int]]) -> None:
@@ -95,7 +95,7 @@ def test_repository_get_group_preserves_task_and_media_order(tmp_path: Path) -> 
     group = repository.get_group(group_id)
 
     assert group.codes == ["111111", "222222"]
-    assert [item.sha256 for item in group.tasks[0].media] == ["A", "B"]
+    assert [item.media_hash for item in group.tasks[0].media] == ["A", "B"]
     assert [item.telegram_message_id for item in group.tasks[0].media] == [12, 11]
 
 
@@ -120,7 +120,7 @@ async def test_new_task_goes_to_deal1_with_only_deal_media(system) -> None:
     assert result.disposition == "DEAL1"
     group = repository.get_group(result.group_id)
     assert group.hashes == {"A", "B"}
-    assert [item.sha256 for item in publisher.groups[-1].display_media()] == ["B"]
+    assert [item.media_hash for item in publisher.groups[-1].display_media()] == ["B"]
     assert publisher.delete_calls == 0
 
 
@@ -148,7 +148,7 @@ async def test_repeat_upgrades_all_connected_deal1_groups_to_deal2(system) -> No
     assert merged.disposition == "DEAL2"
     assert group.codes == ["111111", "222222", "333333"]
     assert group.hashes == {"A", "B", "C", "D", "E"}
-    assert [item.sha256 for item in group.display_media()] == ["B", "D", "E"]
+    assert [item.media_hash for item in group.display_media()] == ["B", "D", "E"]
     assert not repository.group_is_active(first.group_id)
     assert not repository.group_is_active(second.group_id)
     assert len(publisher.deleted) == 2
@@ -190,7 +190,7 @@ async def test_up_merge_absorbs_connected_deals_and_preserves_hidden_hash(
     assert group.codes == ["111111", "222222", "333333"]
     assert group.hashes == {"A", "B", "C", "D", "E"}
     assert "A" in group.hidden_hashes
-    assert "A" not in {item.sha256 for item in group.display_media()}
+    assert "A" not in {item.media_hash for item in group.display_media()}
     assert not repository.group_is_active(other_deal.group_id)
 
 

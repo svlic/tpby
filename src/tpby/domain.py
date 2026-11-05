@@ -47,7 +47,7 @@ def is_deal_media_caption(text: str) -> bool:
 
 @dataclass(frozen=True)
 class MediaInput:
-    sha256: str
+    media_hash: str
     path: Path
     mime_type: str | None = None
     telegram_message_id: int | None = None
@@ -62,7 +62,7 @@ class SourceTask:
     code_message_id: int | None = None
 
     def __post_init__(self) -> None:
-        hashes = {item.sha256 for item in self.media}
+        hashes = {item.media_hash for item in self.media}
         if not hashes:
             raise ValueError("source task has no media")
         if self.deal_media_hash not in hashes:
@@ -70,7 +70,7 @@ class SourceTask:
 
     @property
     def hashes(self) -> set[str]:
-        return {item.sha256 for item in self.media}
+        return {item.media_hash for item in self.media}
 
 
 @dataclass(frozen=True)
@@ -94,18 +94,18 @@ class GroupSnapshot:
 
     @property
     def hashes(self) -> set[str]:
-        return {media.sha256 for task in self.tasks for media in task.media}
+        return {media.media_hash for task in self.tasks for media in task.media}
 
     def display_media(self) -> list[MediaInput]:
         if self.kind in {"DEAL1", "DEAL2"}:
             wanted = [task.deal_media_hash for task in self.tasks]
         else:
             wanted = [
-                media.sha256
+                media.media_hash
                 for task in self.tasks
                 for media in task.media
-                if media.sha256 not in self.hidden_hashes
+                if media.media_hash not in self.hidden_hashes
             ]
 
-        by_hash = {media.sha256: media for task in self.tasks for media in task.media}
+        by_hash = {media.media_hash: media for task in self.tasks for media in task.media}
         return [by_hash[value] for value in dict.fromkeys(wanted) if value in by_hash]

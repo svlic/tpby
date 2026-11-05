@@ -126,7 +126,8 @@ class RoutingService:
     def _blacklist_metadata(codes: Sequence[str], hashes: set[str]) -> str:
         return json.dumps(
             {
-                "version": 1,
+                "version": 2,
+                "hash_algorithm": "image-phash-video-sha256-v1",
                 "codes": list(codes),
                 "hashes": sorted(hashes),
             },
