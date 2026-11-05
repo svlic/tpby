@@ -15,18 +15,27 @@ def test_extracts_first_standalone_code_and_ignores_parenthesized_date() -> None
 
 
 def test_code_boundaries_reject_digits_and_parentheses() -> None:
-    assert extract_code("x1234567 编号：654321") == "654321"
-    assert extract_code("(123456) （654321）") is None
+    assert extract_code("x12345678 编号：654321") == "654321"
+    assert extract_code("(123456) （654321） (1234567) （7654321）") is None
     assert contains_code("编号：123456", "123456")
     assert not contains_code("编号：(123456)", "123456")
+    assert extract_code("编号：0123456 （260926）") == "0123456"
+    assert contains_code("编号：0123456", "0123456")
+    assert not contains_code("编号：0123456", "012345")
+    assert extract_code("12345 12345678") is None
 
 
-def test_numbered_code_requires_label_separator_and_exact_six_digits() -> None:
+def test_numbered_code_requires_label_separator_and_exact_six_or_seven_digits() -> None:
     assert contains_numbered_code("补充 编号： 123456", "123456")
     assert contains_numbered_code("编号 :123456（验证视频）", "123456")
     assert not contains_numbered_code("正文出现 123456", "123456")
     assert not contains_numbered_code("编号：(123456)", "123456")
     assert not contains_numbered_code("编号：1234567", "123456")
+    assert contains_numbered_code("编号：0123456（验证视频）", "0123456")
+    assert not contains_numbered_code("正文出现 0123456", "0123456")
+    assert not contains_numbered_code("编号：(0123456)", "0123456")
+    assert not contains_numbered_code("编号：01234567", "0123456")
+    assert not contains_numbered_code("编号：12345", "12345")
 
 
 def test_recent_date_uses_fixed_180_day_window() -> None:
@@ -36,6 +45,7 @@ def test_recent_date_uses_fixed_180_day_window() -> None:
     assert not is_recent_date_code("260330", today)
     assert not is_recent_date_code("260928", today)
     assert not is_recent_date_code("260231", today)
+    assert not is_recent_date_code("2609271", today)
 
 
 def test_deal_media_requires_parentheses() -> None:

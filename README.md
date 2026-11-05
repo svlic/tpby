@@ -4,8 +4,8 @@
 
 ## 已实现业务
 
-- 按独立六位数字规则提取 code，并对过去 180 天内的合法 `YYMMDD` 执行 CODE → DEAL1 原生转发旁路。
-- 使用带引号的裸六位 code 精确搜索；所有结果都在本地再次校验“编号”字段和 code 边界。
+- 按独立 6 位或 7 位连续数字规则提取 code，保留前导零，不从更长数字中截取；仅对 6 位且位于过去 180 天内的合法 `YYMMDD` 执行 CODE → DEAL1 原生转发旁路。
+- 使用带引号的完整 6 位或 7 位 code 精确搜索；所有结果都在本地再次校验“编号”字段和 code 边界。
 - 识别 Telegram album，下载全部 source media，仅将真正带有 `(验证视频)` caption 的媒体作为 `deal_media`。
 - 严格执行 `BLACKLIST > UP > 历史重复 > DEAL1/DEAL2`。
 - Blacklist 整组扩散、metadata 文本（JSON 内容）、UP 传递归并、DEAL1 升级和 DEAL2 归并。

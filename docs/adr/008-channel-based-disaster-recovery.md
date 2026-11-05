@@ -19,6 +19,10 @@
 - 遇到未知 metadata 版本时，只要结构可读，就尽量读取 `hashes` 并忽略未知字段。
 - rebuild 不恢复 DEAL、hidden、failure 和 bypass，并且必须在常驻服务停止后运行。
 
+## 2026-11-05：编号长度兼容
+
+随 ADR-004 扩展编号规则，UP caption 恢复同时识别完整 6 位或 7 位 code，并保留前导零。原有六位 caption 继续兼容，caption code list 和 BLACKLIST metadata 的 JSON 结构、版本及 hashes 语义不变，无需迁移；旧版程序不保证恢复七位 UP 编号。
+
 ## 结果
 
 - 即使本地数据库完全丢失，也能恢复长期核心状态。

@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-CODE_PATTERN = re.compile(r"(?<![\d(（])\d{6}(?![\d)）])")
-NUMBERED_CODE_PATTERN = re.compile(r"编号\s*[:：]\s*(?P<code>\d{6})(?![\d)）])")
+CODE_PATTERN = re.compile(r"(?<![\d(（])\d{6,7}(?![\d)）])")
+NUMBERED_CODE_PATTERN = re.compile(r"编号\s*[:：]\s*(?P<code>\d{6,7})(?![\d)）])")
 DEAL_MEDIA_PATTERN = re.compile(r"[（(]\s*验证视频\s*[）)]")
 
 GroupKind = Literal["DEAL1", "DEAL2", "UP"]
@@ -31,6 +31,8 @@ def contains_numbered_code(text: str, code: str) -> bool:
 
 
 def is_recent_date_code(code: str, today: date | None = None) -> bool:
+    if len(code) != 6:
+        return False
     today = today or datetime.now(ZoneInfo("Asia/Shanghai")).date()
     try:
         parsed = date(2000 + int(code[:2]), int(code[2:4]), int(code[4:6]))

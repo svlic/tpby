@@ -4,12 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from tpby.domain import MediaInput
+from tpby.domain import GroupSnapshot, MediaInput, StoredTask
 from tpby.telegram import (
     AdaptiveTelegramGate,
     AmbiguousSourceError,
     SourceObject,
     TelegramApplication,
+    TelegramPublisher,
 )
 
 
@@ -42,20 +43,22 @@ def application(messages) -> TelegramApplication:
 
 
 @pytest.mark.asyncio
-async def test_source_search_is_quoted_and_locally_filters_fuzzy_results() -> None:
+@pytest.mark.parametrize("code", ["123456", "0123456"])
+async def test_source_search_is_quoted_and_locally_filters_fuzzy_results(code) -> None:
     app = application(
         [
-            message(1, "正文出现 123456"),
-            message(2, "编号：1234567"),
-            message(3, "编号：(123456)"),
-            message(4, "编号 : 123456"),
-            message(5, "补充 编号： 123456"),
+            message(1, f"正文出现 {code}"),
+            message(2, f"编号：{code}7"),
+            message(3, f"编号：({code})"),
+            message(4, f"编号 : {code}"),
+            message(5, f"补充 编号： {code}"),
+            message(6, f"编号：{code[:-1]}"),
         ]
     )
 
-    objects = await app._find_source_objects("123456")
+    objects = await app._find_source_objects(code)
 
-    assert app.reader.queries == ['"123456"']
+    assert app.reader.queries == [f'"{code}"']
     assert [item.messages[0].id for item in objects] == [4, 5]
 
 
@@ -104,3 +107,55 @@ async def test_build_source_task_tracks_deal_media_by_message_id() -> None:
 
     assert [media.media_hash for media in task.media] == ["1", "2", "3"]
     assert task.deal_media_hash == "2"
+
+
+@pytest.mark.asyncio
+async def test_published_mixed_length_codes_survive_up_recovery() -> None:
+    messages = []
+
+    class Channel:
+        async def send_file(self, channel, files, caption):
+            assert caption == "123456\n0123456"
+            sent = [
+                SimpleNamespace(id=1, grouped_id=None, media=True, message=caption)
+            ]
+            messages.extend(sent)
+            return sent
+
+        async def iter_messages(self, channel):
+            for item in messages:
+                yield item
+
+    channel = Channel()
+    settings = SimpleNamespace(
+        deal1_channel=-1001,
+        deal2_channel=-1002,
+        up_channel=-1003,
+        blacklist_channel=-1004,
+    )
+    media = MediaInput("A", Path("/A.mp4"))
+    group = GroupSnapshot(
+        1,
+        "UP",
+        (
+            StoredTask(1, "123456", (media,), "A"),
+            StoredTask(2, "0123456", (media,), "A"),
+        ),
+    )
+    publisher = TelegramPublisher(channel, settings, AdaptiveTelegramGate("writer", 1))
+    await publisher.publish_group(group)
+    messages[0].message += "\n12345678\n（260927）\n0123456"
+
+    app = object.__new__(TelegramApplication)
+    app.reader = channel
+    app.settings = settings
+    app._reader_gate = AdaptiveTelegramGate("reader", 1)
+
+    async def download_media(source_message):
+        return media
+
+    app._download_media = download_media
+
+    recovered = await app._scan_up_groups()
+
+    assert recovered == {("123456", "0123456"): [(1, media)]}

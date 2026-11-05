@@ -25,7 +25,7 @@
 | [ADR-001](001-python-telethon-dual-account.md) | 使用 Python、Telethon 和双用户账号 | 已接受（回溯记录） |
 | [ADR-002](002-sqlite-content-addressed-media.md) | 使用 SQLite 与按 SHA-256 寻址的媒体文件 | 已接受（回溯记录） |
 | [ADR-003](003-hash-connected-routing.md) | 按媒体哈希连通关系和固定优先级路由 | 已接受（回溯记录） |
-| [ADR-004](004-source-search-validation.md) | 严格搜索六位 code 并在本地二次校验 | 已接受（已实现） |
+| [ADR-004](004-source-search-validation.md) | 严格搜索 6 位或 7 位 code 并在本地二次校验 | 已接受（已实现） |
 | [ADR-005](005-staged-group-replacement.md) | 使用 staged group 缓解跨系统非原子更新 | 已接受（回溯记录） |
 | [ADR-006](006-telegram-human-control-plane.md) | 使用 Telegram 转发和删除作为人工控制面 | 已接受（回溯记录） |
 | [ADR-007](007-idempotency-retry-failure.md) | 持久化幂等状态并对瞬时错误有限重试 | 已接受（已实现） |
