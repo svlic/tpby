@@ -27,13 +27,30 @@
 
 ## Docker 部署（推荐）
 
-需要 Docker Engine 和 Docker Compose。先创建配置：
+需要 Docker Engine 和 Docker Compose。使用预构建镜像 `ghcr.io/svlic/tpby:latest`，同一标签包含 `linux/amd64` 和 `linux/arm64`（ARM64 / AArch64，不含 ARMv7），Docker 会自动选择主机架构，无需本机构建。
+
+先下载本仓库的 `compose.yaml` 和 `.env.example` 到同一目录（也可克隆仓库），再创建配置：
 
 ```bash
 cp .env.example .env
 # 编辑 .env，分别填写 Reader、Writer 的 API 凭据和六个频道 ID
-docker compose build
+docker compose pull
 ```
+
+默认跟随 main 的 `latest` 镜像；生产环境可在 `.env` 中设置 `TPBY_IMAGE=ghcr.io/svlic/tpby:v0.1.0`（示例，需该标签已发布），或使用 `ghcr.io/svlic/tpby@sha256:...` 固定镜像 digest。升级前应备份数据库、媒体和 session。
+
+### 镜像发布与访问权限
+
+GitHub Actions 的 [Docker image 工作流](.github/workflows/docker.yml) 使用 QEMU 和 Buildx 构建两个架构并发布到 GHCR：
+
+- 推送到 `main`：发布 `latest` 和 `sha-<短提交号>`。
+- 推送 `v*` 标签：发布同名标签（如 `v0.1.0`）和 `sha-<短提交号>`，不会覆盖 `latest`。
+- Pull Request：仅验证两个架构的构建，不登录或推送镜像。
+- 手动运行：发布对应提交的 SHA 标签；在默认分支运行时也更新 `latest`。
+
+工作流使用自带的 `GITHUB_TOKEN`，不需要额外配置发布密钥；仓库须允许 Actions 写入 Packages。首次发布后，维护者应在 GitHub Packages 中将该镜像包的可见性设为 **Public**，才能匿名拉取。若保留为私有包，部署机需先使用具有 `read:packages` 权限且有权访问该包的令牌执行 `docker login ghcr.io`。Fork 后镜像发布到 fork 所属仓库路径，需相应修改 `.env` 中的 `TPBY_IMAGE`。
+
+### 首次登录与启动
 
 首次运行需要交互登录两个 Telegram 用户账号：
 
@@ -48,22 +65,33 @@ docker compose up -d
 docker compose logs -f tpby
 ```
 
-停止或更新：
+更新镜像并重建服务容器（若固定版本，先修改 `.env` 中的 `TPBY_IMAGE`）：
 
 ```bash
-docker compose down
-docker compose build --pull
+docker compose pull
 docker compose up -d
 ```
 
+停止服务使用 `docker compose down`。
+
 Compose 使用命名卷 `tpby-data` 和 `tpby-sessions`，删除或重建容器不会丢失数据库、媒体和登录 session。不要使用 `docker compose down -v`，除非明确需要删除全部本地状态。容器以非 root 用户运行、根文件系统只读，且不开放任何网络端口。
 
-执行灾难恢复前必须先停止常驻服务，避免同时使用数据库和 Telegram session：
+执行灾难恢复前必须先停止常驻服务并备份数据；`--rebuild` 会替换本地数据库状态，不是无损迁移：
 
 ```bash
 docker compose stop tpby
 docker compose run --rm tpby --rebuild
 docker compose up -d
+```
+
+### 可选：本地构建
+
+在仓库目录执行以下命令构建当前主机架构的镜像，并通过同一份 Compose 启动。后续命令也需保留 `TPBY_IMAGE=tpby:local`，且不要执行 `docker compose pull`：
+
+```bash
+docker build --pull -t tpby:local .
+TPBY_IMAGE=tpby:local docker compose run --rm --pull never tpby
+TPBY_IMAGE=tpby:local docker compose up -d --pull never
 ```
 
 ## 本机安装

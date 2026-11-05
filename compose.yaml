@@ -2,9 +2,7 @@ name: tpby
 
 services:
   tpby:
-    build:
-      context: .
-    image: tpby:local
+    image: ${TPBY_IMAGE:-ghcr.io/svlic/tpby:latest}
     env_file:
       - .env
     environment:

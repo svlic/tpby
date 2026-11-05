@@ -32,3 +32,14 @@
 - **事实：** 开发线程记录了镜像构建、Compose 配置、非 root 权限和只读容器 CLI 验证。
 - **事实：** 维护者确认目标是单机部署。
 - **开放项：** 没有生产环境健康检查、资源上限和完整恢复演练记录。
+
+## 2026-11-05 补充：多架构镜像发布与拉取部署
+
+- **原因与范围：** 为 AMD64 和 ARM64 单机提供预构建镜像，避免每台部署机安装构建依赖；不改变单实例、账号职责、持久化目录或容器安全基线。
+- 使用 GitHub Actions、QEMU 和 Buildx 构建 `linux/amd64`、`linux/arm64`，以同一多架构标签发布到 GHCR。ARMv7 不在支持范围。
+- main 推送发布 `latest` 与提交 SHA 标签；`v*` 标签推送发布同名标签与 SHA 标签。PR 只构建、不发布；手动运行发布 SHA 标签，默认分支还更新 `latest`。
+- 发布使用仅在构建 job 授予 Packages 写权限的 `GITHUB_TOKEN`。首次发布后需人工配置包的公开可见性，私有包部署需自行登录 GHCR；工作流不修改可见性或部署真实服务。
+- Compose 默认镜像改为 `ghcr.io/svlic/tpby:latest`，允许通过 `TPBY_IMAGE` 选择版本标签、digest 或本地镜像。Docker 根据主机自动选择架构。
+- 此规则取代 README 中默认 `docker compose build` 的部署方式：默认改为 `docker compose pull` 后启动；保留直接通过 Dockerfile 构建本地镜像的方式。原有命名卷与路径保持不变，无需 rebuild。
+- **验证边界：** 工作流和 Compose 可在本地做静态检查；首次 GitHub Actions 执行、GHCR 发布和双架构构建结果仍需在提交并触发工作流后确认，不将配置文件存在视为镜像已发布。
+- **仍然存在：** Python 依赖版本范围与基础镜像未锁定（F-010 / R-014）；使用 digest 可固定已发布产物，但不代表重新构建可复现。
